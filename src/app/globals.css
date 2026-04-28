@@ -10,6 +10,10 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  /* Neutral Authority Palette */
+  --color-navy: #1B263B;
+  --color-offwhite: #F0EAD6;
+  --color-success-green: #4CAF50;
 }
 
 @media (prefers-color-scheme: dark) {
