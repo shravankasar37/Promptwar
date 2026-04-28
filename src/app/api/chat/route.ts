@@ -35,6 +35,8 @@ function retrieveRelevantContext(query: string) {
   return "No specific local laws were found for this query in the vector database.";
 }
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(req: NextRequest) {
   try {
     const { message } = await req.json();
@@ -58,7 +60,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ reply: replyText });
     }
 
-    // Step 3: Call Gemini API using the new @google/genai SDK
+    // Step 3: Call Gemini API directly via fetch to avoid SDK model name mismatches
     const prompt = `
       You are the VoteSmart Myth-Buster AI. Your job is to strictly fact-check user claims regarding elections using ONLY the provided verified context.
       User Query: "${message}"
@@ -68,18 +70,32 @@ export async function POST(req: NextRequest) {
       ${context}
       """
 
-      Rules:
+      Rules for Reliability & Safety (CRITICAL):
       1. ONLY answer based on the Context provided. 
-      2. ALWAYS cite the exact source mentioned in the context (usually ends with "Source: ...").
-      3. Format the answer cleanly using markdown. If the claim is false, state it clearly.
+      2. Citation Requirement: ALWAYS cite the exact source mentioned in the context using a badge format (e.g., [Source: Texas Secretary of State](https://www.votetexas.gov/)).
+      3. Non-Partisan Filter: NEVER recommend a candidate or party. You must only explain HOW to vote, not WHO to vote for. If the user asks for a political opinion, you must respond exactly with: "I am a non-partisan assistant. I can provide candidate bios and records, but I cannot offer opinions."
+      4. Human-In-The-Loop: If you are unsure about a local law change or the context doesn't provide the answer, DO NOT GUESS. Tell the user exactly this: "I cannot verify that local law based on my current data. Please contact your local Board of Elections directly."
+      5. Format the answer cleanly using markdown. If a claim is demonstrably false based on the context, state it clearly.
     `;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash',
-      contents: prompt,
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${process.env.GEMINI_API_KEY}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }]
+      })
     });
 
-    return NextResponse.json({ reply: response.text });
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error("Gemini API Error:", errText);
+      throw new Error(`API returned ${response.status}`);
+    }
+
+    const data = await response.json();
+    const replyText = data.candidates?.[0]?.content?.parts?.[0]?.text || "I could not generate a response. Please check if your API key has quota.";
+
+    return NextResponse.json({ reply: replyText });
   } catch (error: any) {
     console.error('Error generating AI response:', error);
     return NextResponse.json(
